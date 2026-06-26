@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI-powered chess coaching — solve puzzles, get instant feedback, and level up your tactics." />
+  <title>Chess Coach AI — Personalized Tactical Training</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+
+  <!-- chessboard.js -->
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" />
+
+  <style>
+    /* ── CSS Custom Properties ──────────────────────────────────── */
+    :root {
+      --bg-primary: #0a0a1a;
+      --bg-secondary: #10102a;
+      --surface: rgba(255, 255, 255, 0.035);
+      --surface-hover: rgba(255, 255, 255, 0.06);
+      --surface-active: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.15);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-green: #22c55e;
+      --accent-green-dim: rgba(34, 197, 94, 0.15);
+      --accent-green-glow: rgba(34, 197, 94, 0.35);
+      --accent-amber: #f59e0b;
+      --accent-amber-dim: rgba(245, 158, 11, 0.15);
+      --accent-amber-glow: rgba(245, 158, 11, 0.3);
+      --accent-red: #ef4444;
+      --accent-red-dim: rgba(239, 68, 68, 0.12);
+      --accent-blue: #3b82f6;
+      --accent-blue-dim: rgba(59, 130, 246, 0.12);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --radius-xl: 24px;
+      --shadow-sm: 0 2px 8px rgba(0,0,0,0.25);
+      --shadow-md: 0 8px 30px rgba(0,0,0,0.35);
+      --shadow-lg: 0 16px 50px rgba(0,0,0,0.5);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    /* ── Reset & Base ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Animated Background ───────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 15% 45%, rgba(34,197,94,0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 85% 25%, rgba(59,130,246,0.055) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 40% at 50% 85%, rgba(245,158,11,0.045) 0%, transparent 50%);
+      z-index: 0;
+      pointer-events: none;
+      animation: bgShift 25s ease-in-out infinite alternate;
+    }
+    @keyframes bgShift {
+      0%   { opacity: 1; transform: scale(1); }
+      100% { opacity: 0.7; transform: scale(1.08); }
+    }
+
+    /* ── Header ────────────────────────────────────────────────── */
+    .header {
+      position: relative; z-index: 1;
+      text-align: center;
+      padding: 2rem 1.5rem 1rem;
+    }
+    .header-title {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #22c55e 0%, #3b82f6 50%, #f59e0b 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradientMove 6s ease-in-out infinite alternate;
+    }
+    @keyframes gradientMove {
+      0%   { background-position: 0% 50%; }
+      100% { background-position: 100% 50%; }
+    }
+    .header-subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+      font-weight: 500;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────── */
+    .main-container {
+      position: relative; z-index: 1;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 1.75rem;
+      padding: 0.5rem 1.5rem 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* ── Glass Card ────────────────────────────────────────────── */
+    .glass-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: var(--shadow-md);
+      transition: border-color 0.3s ease;
+    }
+    .glass-card:hover { border-color: var(--border-hover); }
+
+    /* ── Board Container ───────────────────────────────────────── */
+    .board-wrapper {
+      flex-shrink: 0;
+    }
+    .board-inner {
+      width: 460px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+    #board { width: 100%; }
+
+    .turn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+    .turn-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text-muted);
+      transition: background 0.3s;
+    }
+    .turn-dot.white { background: #fff; }
+    .turn-dot.black { background: #1a1a2e; }
+
+    /* ── Coach Panel ───────────────────────────────────────────── */
+    .coach-panel {
+      width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* ── Level Badge ───────────────────────────────────────────── */
+    .level-section { display: flex; flex-direction: column; gap: 0.75rem; }
+    .level-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--accent-amber-dim);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: var(--radius-md);
+      padding: 0.65rem 1.1rem;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--accent-amber);
+      transition: all 0.3s ease;
+    }
+    .level-badge .level-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent-amber);
+      color: #000;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 800;
+    }
+    .level-description {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ── Puzzle Info ────────────────────────────────────────────── */
+    .puzzle-meta {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .meta-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.7rem;
+      background: var(--accent-blue-dim);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+    }
+
+    /* ── Feedback Area ─────────────────────────────────────────── */
+    .feedback-section label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+    .feedback-box {
+      min-height: 110px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 1rem 1.1rem;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      transition: border-color 0.4s, color 0.4s;
+    }
+    .feedback-box::-webkit-scrollbar { width: 4px; }
+    .feedback-box::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px;
+    }
+    .feedback-box.success {
+      border-left: 3px solid var(--accent-green);
+      color: #a7f3d0;
+    }
+    .feedback-box.error {
+      border-left: 3px solid var(--accent-red);
+      color: #fca5a5;
+    }
+    .feedback-box.info {
+      border-left: 3px solid var(--accent-blue);
+      color: var(--text-secondary);
+    }
+
+    .correct-move-reveal {
+      display: none;
+      margin-top: 0.5rem;
+      padding: 0.6rem 0.9rem;
+      background: var(--accent-red-dim);
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      color: #fca5a5;
+    }
+    .correct-move-reveal code {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--accent-red);
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 0.6rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      padding: 0.7rem 1.3rem;
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-submit {
+      flex: 1;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #fff;
+      box-shadow: 0 4px 18px var(--accent-green-glow);
+    }
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px var(--accent-green-glow);
+    }
+    .btn-submit:disabled {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.25);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--surface-hover);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: var(--surface-active);
+      color: var(--text-primary);
+      border-color: var(--border-hover);
+    }
+
+    .btn-next {
+      flex: 1;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      color: #fff;
+      box-shadow: 0 4px 18px rgba(59,130,246,0.3);
+      display: none;
+    }
+    .btn-next:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(59,130,246,0.4);
+    }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.12);
+      color: var(--accent-red);
+      border: 1px solid rgba(239,68,68,0.25);
+    }
+    .btn-danger:hover {
+      background: rgba(239,68,68,0.2);
+    }
+
+    /* ── Hint ──────────────────────────────────────────────────── */
+    .hint-box {
+      display: none;
+      padding: 0.6rem 0.9rem;
+      background: var(--accent-amber-dim);
+      border: 1px solid rgba(245,158,11,0.25);
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      color: var(--accent-amber);
+    }
+
+    /* ── Stats Bar ─────────────────────────────────────────────── */
+    .stats-bar {
+      position: relative; z-index: 1;
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      background: rgba(255,255,255,0.02);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .stat-value {
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      font-size: 0.95rem;
+    }
+    .stat-value.green { color: var(--accent-green); }
+    .stat-value.red   { color: var(--accent-red); }
+    .stat-value.amber  { color: var(--accent-amber); }
+
+    /* ── Loading Overlay ───────────────────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(10,10,26,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .loading-overlay.active { display: flex; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid rgba(255,255,255,0.1);
+      border-top-color: var(--accent-green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Board Highlights ──────────────────────────────────────── */
+    .highlight-user-move {
+      box-shadow: inset 0 0 0 4px rgba(34,197,94,0.55) !important;
+    }
+    .highlight-correct {
+      box-shadow: inset 0 0 0 4px rgba(34,197,94,0.6) !important;
+    }
+    .highlight-wrong {
+      box-shadow: inset 0 0 0 4px rgba(239,68,68,0.55) !important;
+    }
+    
+    /* ── Performance Modal ─────────────────────────────────────── */
+    .modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 1000000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.active { display: flex; }
+    .modal-content {
+      width: 90%; max-width: 500px;
+      padding: 30px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      text-align: center;
+      color: var(--text-primary);
+    }
+    .modal-content h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: var(--accent-green);
+    }
+    .perf-stats {
+      margin: 20px 0;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+      text-align: left;
+      font-size: 0.95rem;
+      border: 1px solid var(--border);
+    }
+    .perf-improvement {
+      color: var(--accent-amber);
+      font-style: italic;
+      font-size: 0.95rem;
+      margin-top: 15px;
+    }
+    
+    /* Ensure dragged piece renders above all other layers */
+    body > img {
+      z-index: 999999 !important;
+    }
+
+    .highlight-possible {
+      position: relative;
+    }
+    .highlight-possible::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 25%;
+      height: 25%;
+      background-color: rgba(0, 0, 0, 0.4);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .highlight-capture {
+      position: relative;
+    }
+    .highlight-capture::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 75%;
+      height: 75%;
+      box-sizing: border-box;
+      border: 5px solid rgba(0, 0, 0, 0.4);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* ── Animations ────────────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.04); }
+    }
+    .anim-fade-in  { animation: fadeIn 0.5s ease forwards; }
+    .anim-fade-up  { animation: fadeInUp 0.5s ease forwards; }
+    .anim-pulse    { animation: pulse 0.5s ease; }
+
+    /* ── Level-up Toast ────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      top: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      padding: 0.8rem 1.8rem;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #fff;
+      font-weight: 700;
+      font-size: 1rem;
+      border-radius: var(--radius-md);
+      box-shadow: 0 8px 30px var(--accent-green-glow);
+      z-index: 200;
+      transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Responsive ────────────────────────────────────────────── */
+    @media (max-width: 960px) {
+      .main-container {
+        flex-direction: column;
+        align-items: center;
+      }
+      .board-inner { width: 380px; }
+      .coach-panel { width: 380px; }
+    }
+    @media (max-width: 480px) {
+      .header-title { font-size: 1.6rem; }
+      .board-inner { width: 320px; }
+      .coach-panel { width: 320px; }
+      .stats-bar { gap: 0.6rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Level-up Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Performance Modal -->
+  <div class="modal-backdrop" id="performanceModal">
+    <div class="modal-content">
+      <h2>📈 Performance Review</h2>
+      <div class="perf-stats" id="perfStatsText"></div>
+      <div class="perf-improvement" id="perfImprovementText"></div>
+      <button class="btn btn-primary" onclick="closePerformanceModal()" style="margin-top:20px; width:100%">Continue Training</button>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <h1 class="header-title">♔ Chess Coach AI</h1>
+    <p class="header-subtitle">Solve puzzles · Get instant feedback · Level up your tactics</p>
+  </header>
+
+  <!-- Main Layout -->
+  <main class="main-container">
+
+    <!-- Board -->
+    <section class="board-wrapper glass-card" aria-label="Chess board">
+      <div class="board-inner">
+        <div id="board"></div>
+      </div>
+      <div class="turn-indicator" id="turnIndicator">
+        <div class="turn-dot white" id="turnDot"></div>
+        <span id="turnText">White to move</span>
+      </div>
+    </section>
+
+    <!-- Coach Panel -->
+    <aside class="coach-panel" aria-label="Coaching panel">
+
+      <!-- Level -->
+      <div class="glass-card level-section">
+        <div class="level-badge" id="levelBadge">
+          <span class="level-num" id="levelNum">1</span>
+          <span id="levelName">Mate in 1</span>
+        </div>
+        <p class="level-description" id="levelDesc">Find the single move that delivers checkmate.</p>
+        <div class="puzzle-meta" id="puzzleMeta">
+          <span class="meta-tag" id="themeTag">🎯 Loading…</span>
+        </div>
+      </div>
+
+      <!-- Feedback -->
+      <div class="glass-card feedback-section">
+        <label for="feedbackBox">Coach Feedback</label>
+        <div class="feedback-box info" id="feedbackBox">
+          Loading your first puzzle…
+        </div>
+        <div class="correct-move-reveal" id="correctMoveReveal">
+          💡 The correct move was <code id="correctMoveText"></code>
+        </div>
+        <div class="hint-box" id="hintBox"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="glass-card">
+        <div class="btn-row" style="margin-bottom:0.6rem">
+          <button class="btn btn-submit" id="btnSubmit" disabled onclick="submitMove()">
+            ✓ Submit Move
+          </button>
+          <button class="btn btn-next" id="btnNext" onclick="loadNextPuzzle()">
+            → Next Puzzle
+          </button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btnUndo" onclick="undoMove()" style="flex:1">
+            ↩ Undo Move
+          </button>
+          <button class="btn btn-secondary" id="btnHint" onclick="showHint()" style="flex:1">
+            💡 Hint
+          </button>
+          <button class="btn btn-danger" id="btnReset" onclick="resetProgress()" title="Reset all progress">
+            ⟲
+          </button>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- Stats Bar -->
+  <footer class="stats-bar" id="statsBar">
+    <div class="stat-item">✅ Correct <span class="stat-value green" id="statCorrect">0</span></div>
+    <div class="stat-item">❌ Wrong <span class="stat-value red" id="statWrong">0</span></div>
+    <div class="stat-item">🔥 Streak <span class="stat-value amber" id="statStreak">0</span></div>
+    <div class="stat-item">🏆 Best <span class="stat-value" id="statBest">0</span></div>
+    <div class="stat-item">📈 Accuracy <span class="stat-value" id="statAccuracy">0%</span></div>
+    <div class="stat-item">📊 Puzzles <span class="stat-value" id="statTotal">0</span></div>
+  </footer>
+
+  <!-- Dependencies -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+  <script>
+    /* ================================================================
+       State
+    ================================================================ */
+    let board = null;          // chessboard.js instance
+    let game  = null;          // chess.js instance
+    let userMove = null;       // SAN of the move made on the board
+    let currentHint = '';      // hint for the current puzzle
+    let puzzleActive = false;  // whether a puzzle is currently being solved
+    let previousLevel = 1;     // for detecting level-ups
+
+    /* ================================================================
+       Initialisation
+    ================================================================ */
+    document.addEventListener('DOMContentLoaded', () => {
+      initBoard();
+      loadNextPuzzle();
+    });
+
+    function initBoard() {
+      const cfg = {
+        draggable: true,
+        position: 'start',
+        orientation: 'white',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart: onDragStart,
+        onDrop: onDrop,
+        onSnapEnd: onSnapEnd,
+        onMouseoverSquare: onMouseoverSquare,
+        onMouseoutSquare: onMouseoutSquare,
+      };
+      board = Chessboard('board', cfg);
+      game = new Chess();
+
+      // Resize on window change
+      $(window).on('resize', () => board.resize());
+    }
+
+    /* ================================================================
+       Board Handlers
+    ================================================================ */
+    function onDragStart(source, piece, position, orientation) {
+      // Don't allow moves when puzzle isn't active
+      if (!puzzleActive) return false;
+      // Don't allow moves if one is already pending submission
+      if (userMove) return false;
+      // Only allow the correct colour to move
+      if (game.turn() === 'w' && piece.search(/^b/) !== -1) return false;
+      if (game.turn() === 'b' && piece.search(/^w/) !== -1) return false;
+      // Don't allow moves if game is over
+      if (game.game_over()) return false;
+    }
+
+    function onDrop(source, target) {
+      // Attempt the move with chess.js
+      const move = game.move({
+        from: source,
+        to: target,
+        promotion: 'q'   // always promote to queen for simplicity
+      });
+
+      if (move === null) return 'snapback';
+
+      userMove = move.san;
+      highlightSquares(source, target, 'highlight-user-move');
+
+      // Update UI
+      setFeedback(`Move: <strong>${move.san}</strong> — click <strong>Submit</strong> to check.`, 'info');
+      document.getElementById('btnSubmit').disabled = false;
+      document.getElementById('btnSubmit').classList.add('anim-pulse');
+    }
+
+    function onSnapEnd() {
+      board.position(game.fen());
+    }
+    
+    function onMouseoverSquare(square, piece) {
+      if (!puzzleActive || userMove) return;
+      const moves = game.moves({ square: square, verbose: true });
+      if (moves.length === 0) return;
+      
+      for (const move of moves) {
+        const destEl = document.querySelector(`[data-square="${move.to}"]`);
+        if (destEl) {
+          if (move.flags.includes('c') || move.flags.includes('e')) {
+            destEl.classList.add('highlight-capture');
+          } else {
+            destEl.classList.add('highlight-possible');
+          }
+        }
+      }
+    }
+
+    function onMouseoutSquare(square, piece) {
+      document.querySelectorAll('.highlight-possible, .highlight-capture').forEach(el => {
+        el.classList.remove('highlight-possible', 'highlight-capture');
+      });
+    }
+
+    /* ================================================================
+       API Calls
+    ================================================================ */
+    async function loadNextPuzzle() {
+      showLoading();
+      hideCorrectMoveReveal();
+      clearHighlights();
+
+      try {
+        const res = await fetch('/get_puzzle');
+        const data = await res.json();
+
+        if (!data.success) {
+          setFeedback('⚠ Failed to load puzzle: ' + (data.error || 'Unknown error'), 'error');
+          hideLoading();
+          return;
+        }
+
+        // Reset move state
+        userMove = null;
+        puzzleActive = true;
+        currentHint = data.hint || '';
+
+        // Set up the board
+        game = new Chess(data.fen);
+        const orient = data.turn === 'b' ? 'black' : 'white';
+        board.orientation(orient);
+        board.position(data.fen, true);  // animate
+
+        // Update turn indicator
+        updateTurnIndicator(data.turn);
+
+        // Update level info
+        const lvl = data.level_info;
+        if (lvl.level > previousLevel) {
+          showToast(`🎉 Level ${lvl.level} — ${lvl.name}`);
+        }
+        previousLevel = lvl.level;
+
+        document.getElementById('levelNum').textContent = lvl.level;
+        document.getElementById('levelName').textContent = lvl.name;
+        document.getElementById('levelDesc').textContent = lvl.description || '';
+
+        // Theme tag
+        const theme = data.theme ? data.theme.replace(/_/g, ' ') : 'puzzle';
+        document.getElementById('themeTag').textContent = '🎯 ' + theme;
+
+        // Coaching notes / welcome message
+        setFeedback(data.coaching_notes || 'Find the best move!', 'info');
+
+        // Buttons
+        document.getElementById('btnSubmit').disabled = true;
+        document.getElementById('btnSubmit').style.display = '';
+        document.getElementById('btnNext').style.display = 'none';
+
+        // Stats
+        updateStats(data.stats);
+
+        // Hide hint
+        document.getElementById('hintBox').style.display = 'none';
+
+      } catch (err) {
+        setFeedback('⚠ Network error — is the server running?', 'error');
+        console.error(err);
+      }
+      hideLoading();
+    }
+
+    async function submitMove() {
+      if (!userMove) return;
+
+      showLoading();
+      puzzleActive = false;  // prevent further moves during evaluation
+      document.getElementById('btnSubmit').disabled = true;
+
+      try {
+        const res = await fetch('/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_move: userMove }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'error' && data.error_type === 'ILLEGAL_MOVE') {
+          setFeedback('⚠ ' + data.feedback, 'error');
+          puzzleActive = true;
+          document.getElementById('btnSubmit').disabled = false;
+          hideLoading();
+          
+          // Revert the board
+          game.undo();
+          board.position(game.fen());
+          clearHighlights();
+          userMove = null;
+          document.getElementById('btnSubmit').classList.remove('anim-pulse');
+          return;
+        }
+
+        if (!data.success) {
+          setFeedback('⚠ ' + (data.error || 'Evaluation failed'), 'error');
+          puzzleActive = true;
+          document.getElementById('btnSubmit').disabled = false;
+          hideLoading();
+          return;
+        }
+
+        // Show analysis
+        let feedbackHTML = data.analysis || '';
+        if (data.explanation) {
+          feedbackHTML += '<br><br><em>' + data.explanation + '</em>';
+        }
+
+        // Coaching notes for next round (show below analysis)
+        if (data.coaching_notes) {
+          feedbackHTML += '<br><br>📋 ' + data.coaching_notes;
+        }
+
+        setFeedback(feedbackHTML, data.correct ? 'success' : 'error');
+
+        // Highlight result
+        clearHighlights();
+        
+        if (!data.puzzle_completed) {
+          // Multi-step puzzle continues
+          setTimeout(() => {
+            if (data.opponent_reply) {
+              const oppMove = game.move(data.opponent_reply);
+              if (oppMove) {
+                board.position(game.fen());
+                highlightSquares(oppMove.from, oppMove.to, 'highlight-wrong'); // Highlight opponent move in red
+                
+                let nextMsg = feedbackHTML + '<br><br><strong>Opponent played ' + data.opponent_reply + '. Your turn!</strong>';
+                setFeedback(nextMsg, 'info');
+              }
+            }
+            userMove = null;
+            puzzleActive = true;
+            document.getElementById('btnSubmit').style.display = 'inline-flex';
+            document.getElementById('btnSubmit').disabled = true;
+            document.getElementById('btnNext').style.display = 'none';
+          }, 600); // slight delay before opponent plays
+        } else {
+          // Puzzle is finished (either wrong, or fully solved)
+          if (!data.correct) {
+            showCorrectMoveReveal(data.correct_move);
+          }
+          
+          // Update stats and level up ONLY when puzzle is completed
+          updateStats(data.stats);
+          if (data.level_info && data.level_info.level > previousLevel) {
+            showToast(`🎉 Level ${data.level_info.level} — ${data.level_info.name}`);
+            previousLevel = data.level_info.level;
+          }
+
+          if (data.stats.total > 0 && data.stats.total % 5 === 0) {
+            showPerformanceModal(data.stats, data.coaching_notes);
+          }
+
+          // Show Next Puzzle button
+          document.getElementById('btnSubmit').style.display = 'none';
+          document.getElementById('btnNext').style.display = 'inline-flex';
+        }
+
+      } catch (err) {
+        setFeedback('⚠ Network error — please try again.', 'error');
+        puzzleActive = true;
+        document.getElementById('btnSubmit').disabled = false;
+        console.error(err);
+      }
+      hideLoading();
+    }
+
+    async function resetProgress() {
+      if (!confirm('Reset all progress? This cannot be undone.')) return;
+      try {
+        await fetch('/reset', { method: 'POST' });
+        previousLevel = 1;
+        loadNextPuzzle();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    /* ================================================================
+       UI Helpers
+    ================================================================ */
+    function undoMove() {
+      if (!userMove) return;
+      game.undo();
+      board.position(game.fen());
+      userMove = null;
+      puzzleActive = true;
+      clearHighlights();
+      document.getElementById('btnSubmit').disabled = true;
+      document.getElementById('btnSubmit').style.display = 'inline-flex';
+      document.getElementById('btnNext').style.display = 'none';
+      hideCorrectMoveReveal();
+      setFeedback('Move undone — try another move.', 'info');
+    }
+
+    function showHint() {
+      const hintBox = document.getElementById('hintBox');
+      if (currentHint) {
+        hintBox.textContent = '💡 ' + currentHint;
+        hintBox.style.display = 'block';
+        hintBox.classList.add('anim-fade-up');
+      }
+    }
+
+    function setFeedback(html, type) {
+      const box = document.getElementById('feedbackBox');
+      box.innerHTML = html;
+      box.className = 'feedback-box ' + (type || 'info') + ' anim-fade-up';
+    }
+
+    function updateTurnIndicator(turn) {
+      const dot = document.getElementById('turnDot');
+      const text = document.getElementById('turnText');
+      dot.className = 'turn-dot ' + (turn === 'w' ? 'white' : 'black');
+      text.textContent = (turn === 'w' ? 'White' : 'Black') + ' to move';
+    }
+
+    function updateStats(stats) {
+      if (!stats) return;
+      document.getElementById('statCorrect').textContent = stats.correct ?? 0;
+      document.getElementById('statWrong').textContent = stats.wrong ?? 0;
+      document.getElementById('statStreak').textContent = stats.streak ?? 0;
+      document.getElementById('statBest').textContent = stats.best_streak ?? 0;
+      document.getElementById('statAccuracy').textContent = (stats.accuracy ?? 0) + '%';
+      document.getElementById('statTotal').textContent = stats.total ?? 0;
+    }
+
+    function showCorrectMoveReveal(move) {
+      const el = document.getElementById('correctMoveReveal');
+      document.getElementById('correctMoveText').textContent = move;
+      el.style.display = 'block';
+      el.classList.add('anim-fade-up');
+    }
+
+    function hideCorrectMoveReveal() {
+      document.getElementById('correctMoveReveal').style.display = 'none';
+    }
+
+    function highlightSquares(sq1, sq2, cls) {
+      clearHighlights();
+      const el1 = document.querySelector(`[data-square="${sq1}"]`);
+      const el2 = document.querySelector(`[data-square="${sq2}"]`);
+      if (el1) el1.classList.add(cls);
+      if (el2) el2.classList.add(cls);
+    }
+
+    function clearHighlights() {
+      document.querySelectorAll('.highlight-user-move, .highlight-correct, .highlight-wrong, .highlight-possible, .highlight-capture').forEach(el => {
+        el.classList.remove('highlight-user-move', 'highlight-correct', 'highlight-wrong', 'highlight-possible', 'highlight-capture');
+      });
+    }
+
+    function showLoading() {
+      document.getElementById('loadingOverlay').classList.add('active');
+    }
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.remove('active');
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function showPerformanceModal(stats, notes) {
+      document.getElementById('perfStatsText').innerHTML = `
+        <strong>Puzzles Completed:</strong> ${stats.total}<br>
+        <strong>Correct:</strong> ${stats.correct} (${stats.accuracy}%)<br>
+        <strong>Current Streak:</strong> ${stats.streak}<br>
+        <strong>Best Streak:</strong> ${stats.best_streak}
+      `;
+      document.getElementById('perfImprovementText').innerHTML = notes ? '🎯 <strong>Focus Area:</strong> ' + notes : 'Keep up the great work!';
+      document.getElementById('performanceModal').classList.add('active');
+    }
+
+    function closePerformanceModal() {
+      document.getElementById('performanceModal').classList.remove('active');
+    }
+  </script>
+
+</body>
+</html>

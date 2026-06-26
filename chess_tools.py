@@ -1,0 +1,901 @@
+"""
+chess_tools.py — Helper functions using python-chess for move validation,
+FEN management, and a built-in puzzle database for offline play.
+"""
+
+import chess
+import random
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Built-in Puzzle Database
+# Each puzzle has: fen, solution (list of SAN moves), hint, theme, difficulty
+# All positions have been verified for correctness.
+# ---------------------------------------------------------------------------
+BUILTIN_PUZZLES: dict[str, list[dict]] = {
+    "mate_in_3": [
+        {
+            "fen": "6nr/pp3p1p/k1p5/8/1QN5/2P1P3/4KPqP/8 b - - 5 26",
+            "solution": [
+                "b5",
+                "Qa5+",
+                "Kb7",
+                "Nd6+",
+                "Kb8",
+                "Qd8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3",
+            "full_line": "b5 Qa5+ Kb7 Nd6+ Kb8 Qd8#"
+        },
+        {
+            "fen": "4rr1k/pQpn2pp/3p1q2/8/8/2P5/PP3PPP/RN3RK1 w - - 1 16",
+            "solution": [
+                "Qxc7",
+                "Qxf2+",
+                "Rxf2",
+                "Re1+",
+                "Rf1",
+                "Rexf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "kingsideAttack, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Qxc7 Qxf2+ Rxf2 Re1+ Rf1 Rexf1#"
+        },
+        {
+            "fen": "1r6/pp2kpp1/2n1p1n1/3p2PQ/5P2/2PqP3/PP1N4/2KR3R w - - 3 27",
+            "solution": [
+                "Qh7",
+                "Nb4",
+                "cxb4",
+                "Rc8+",
+                "Nc4",
+                "Rxc4#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "long, mate, mateIn3, middlegame, queensideAttack, sacrifice",
+            "full_line": "Qh7 Nb4 cxb4 Rc8+ Nc4 Rxc4#"
+        },
+        {
+            "fen": "rn3rk1/4pp1p/3p2pB/2q4P/3bP1b1/Pp2Q3/1P2B3/1K1R2NR w - - 0 20",
+            "solution": [
+                "Qxd4",
+                "Qc2+",
+                "Ka1",
+                "Rxa3+",
+                "bxa3",
+                "Qa2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "long, mate, mateIn3, middlegame, queensideAttack, sacrifice",
+            "full_line": "Qxd4 Qc2+ Ka1 Rxa3+ bxa3 Qa2#"
+        },
+        {
+            "fen": "2k1r3/pppn1pp1/3b2b1/3p2Pp/2B2P2/3P3P/PPPR4/2K3NR w - - 0 18",
+            "solution": [
+                "Bxd5",
+                "Re1+",
+                "Rd1",
+                "Bxf4+",
+                "Kb1",
+                "Rxd1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, deflection, long, mate, mateIn3, middlegame",
+            "full_line": "Bxd5 Re1+ Rd1 Bxf4+ Kb1 Rxd1#"
+        },
+        {
+            "fen": "r6r/pp2kb2/3p1p1Q/1N1Pp3/3bP3/P2B2P1/1P4PP/7K w - - 6 28",
+            "solution": [
+                "Qd2",
+                "Rxh2+",
+                "Kxh2",
+                "Rh8+",
+                "Qh6",
+                "Rxh6#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "attraction, kingsideAttack, long, mate, mateIn3, middlegame, pillsburysMate, sacrifice",
+            "full_line": "Qd2 Rxh2+ Kxh2 Rh8+ Qh6 Rxh6#"
+        },
+        {
+            "fen": "2k3r1/ppp2prp/1q2b3/8/Q7/2P1R1P1/P4P1P/4R1K1 b - - 3 23",
+            "solution": [
+                "Bd7",
+                "Re8+",
+                "Bxe8",
+                "Rxe8+",
+                "Rxe8",
+                "Qxe8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "long, mate, mateIn3, middlegame, queensideAttack, sacrifice",
+            "full_line": "Bd7 Re8+ Bxe8 Rxe8+ Rxe8 Qxe8#"
+        },
+        {
+            "fen": "1n5k/4r1p1/p2q1rPp/1ppB4/8/3P4/PPP1RPQ1/2K4R b - - 4 25",
+            "solution": [
+                "Rxe2",
+                "Rxh6+",
+                "gxh6",
+                "g7+",
+                "Kh7",
+                "g8=Q#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "advancedPawn, kingsideAttack, long, mate, mateIn3, middlegame, promotion, sacrifice",
+            "full_line": "Rxe2 Rxh6+ gxh6 g7+ Kh7 g8=Q#"
+        },
+        {
+            "fen": "8/1pp1r1kp/4r1p1/p1P5/5Q2/P4PPq/1P1R3P/3R2K1 w - - 2 32",
+            "solution": [
+                "Rd8",
+                "Re1+",
+                "Rxe1",
+                "Rxe1+",
+                "Kf2",
+                "Qf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3",
+            "full_line": "Rd8 Re1+ Rxe1 Rxe1+ Kf2 Qf1#"
+        },
+        {
+            "fen": "8/2p4r/1p3k2/p2Pp1p1/P1P1RpP1/1P3P1r/4R1K1/8 w - - 7 46",
+            "solution": [
+                "Rxe5",
+                "Rh2+",
+                "Kf1",
+                "Rh1+",
+                "Kf2",
+                "R7h2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, rookEndgame",
+            "full_line": "Rxe5 Rh2+ Kf1 Rh1+ Kf2 R7h2#"
+        },
+        {
+            "fen": "r1qr3k/pp3pB1/1np1pb2/8/3P3P/2N2PR1/PP1Q2P1/2KR4 b - - 0 22",
+            "solution": [
+                "Bxg7",
+                "Qg5",
+                "Rg8",
+                "Qh5+",
+                "Bh6+",
+                "Qxh6#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "exposedKing, kingsideAttack, long, mate, mateIn3, middlegame",
+            "full_line": "Bxg7 Qg5 Rg8 Qh5+ Bh6+ Qxh6#"
+        },
+        {
+            "fen": "r4rk1/pp2q1p1/2p1p2p/3nP1pP/3P2P1/2PQ1R2/PPB5/R5K1 b - - 1 23",
+            "solution": [
+                "Rxf3",
+                "Qh7+",
+                "Kf7",
+                "Bg6+",
+                "Kf8",
+                "Qh8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "kingsideAttack, long, mate, mateIn3, middlegame",
+            "full_line": "Rxf3 Qh7+ Kf7 Bg6+ Kf8 Qh8#"
+        },
+        {
+            "fen": "8/8/6p1/PR3p2/1P3k2/7P/r5P1/7K w - - 1 39",
+            "solution": [
+                "h4",
+                "Kg3",
+                "Rd5",
+                "Ra1+",
+                "Rd1",
+                "Rxd1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, rookEndgame",
+            "full_line": "h4 Kg3 Rd5 Ra1+ Rd1 Rxd1#"
+        },
+        {
+            "fen": "8/P7/8/5k2/8/5pr1/5r2/R6K w - - 0 50",
+            "solution": [
+                "a8=Q",
+                "Rh3+",
+                "Kg1",
+                "Rg2+",
+                "Kf1",
+                "Rh1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, exposedKing, long, master, mate, mateIn3, queenRookEndgame",
+            "full_line": "a8=Q Rh3+ Kg1 Rg2+ Kf1 Rh1#"
+        },
+        {
+            "fen": "3r2k1/4ppnp/pp2q1p1/2p5/4N3/3rP3/P2P1QPP/3R1RK1 b - - 1 28",
+            "solution": [
+                "Qxe4",
+                "Qxf7+",
+                "Kh8",
+                "Qf8+",
+                "Rxf8",
+                "Rxf8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Qxe4 Qxf7+ Kh8 Qf8+ Rxf8 Rxf8#"
+        },
+        {
+            "fen": "r1b2rk1/1p2b1p1/pqn1p1P1/3pP3/1P1P4/P1N1P3/6P1/R2QK2R b KQ - 0 17",
+            "solution": [
+                "Nxe5",
+                "Rh8+",
+                "Kxh8",
+                "Qh5+",
+                "Kg8",
+                "Qh7#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "attraction, fork, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Nxe5 Rh8+ Kxh8 Qh5+ Kg8 Qh7#"
+        },
+        {
+            "fen": "1k3r2/q5r1/2Qp3p/N2Bp3/4P1p1/P7/1PP2PPP/R5K1 w - - 12 35",
+            "solution": [
+                "Nc4",
+                "Qxf2+",
+                "Kh1",
+                "Qf1+",
+                "Rxf1",
+                "Rxf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Nc4 Qxf2+ Kh1 Qf1+ Rxf1 Rxf1#"
+        },
+        {
+            "fen": "r1b2rk1/p4ppp/2p5/6q1/2p3P1/3P1Q1P/PPP5/1K2RR2 b - - 0 17",
+            "solution": [
+                "cxd3",
+                "Qxf7+",
+                "Rxf7",
+                "Re8+",
+                "Rf8",
+                "Rfxf8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "kingsideAttack, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "cxd3 Qxf7+ Rxf7 Re8+ Rf8 Rfxf8#"
+        },
+        {
+            "fen": "6k1/pp3rpp/4Nb2/4p3/1B1r4/6PK/PP5P/2R5 b - - 0 28",
+            "solution": [
+                "Rxb4",
+                "Rc8+",
+                "Bd8",
+                "Rxd8+",
+                "Rf8",
+                "Rxf8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3",
+            "full_line": "Rxb4 Rc8+ Bd8 Rxd8+ Rf8 Rxf8#"
+        },
+        {
+            "fen": "8/3r1ppp/4p3/k3P3/pR2R2P/2P5/2Kr1PP1/8 w - - 4 31",
+            "solution": [
+                "Kc1",
+                "Rd1+",
+                "Kb2",
+                "R7d2+",
+                "Ka3",
+                "Ra1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, exposedKing, long, mate, mateIn3, rookEndgame",
+            "full_line": "Kc1 Rd1+ Kb2 R7d2+ Ka3 Ra1#"
+        },
+        {
+            "fen": "5k2/5r1p/pp2pQ2/8/8/1P6/P1q2PPP/4R1K1 w - - 1 32",
+            "solution": [
+                "Qxe6",
+                "Qxf2+",
+                "Kh1",
+                "Qf1+",
+                "Rxf1",
+                "Rxf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3, sacrifice",
+            "full_line": "Qxe6 Qxf2+ Kh1 Qf1+ Rxf1 Rxf1#"
+        },
+        {
+            "fen": "2b2rk1/pp4p1/2p5/4r3/2B5/1P6/P4pK1/5R2 b - - 4 32",
+            "solution": [
+                "Kh8",
+                "Rh1+",
+                "Bh3+",
+                "Rxh3+",
+                "Rh5",
+                "Rxh5#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, pillsburysMate",
+            "full_line": "Kh8 Rh1+ Bh3+ Rxh3+ Rh5 Rxh5#"
+        },
+        {
+            "fen": "Q7/8/3B4/2p5/Krkn4/8/8/8 w - - 1 54",
+            "solution": [
+                "Ka3",
+                "Nb5+",
+                "Ka2",
+                "Nc3+",
+                "Ka1",
+                "Rb1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "arabianMate, endgame, exposedKing, fork, long, master, mate, mateIn3",
+            "full_line": "Ka3 Nb5+ Ka2 Nc3+ Ka1 Rb1#"
+        },
+        {
+            "fen": "4r2k/1pQ2p2/p4N1p/5P2/1P6/P1Pn1K2/4r3/6R1 w - - 1 36",
+            "solution": [
+                "Qxf7",
+                "R8e3+",
+                "Kg4",
+                "Ne5+",
+                "Kh5",
+                "Rh2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, exposedKing, fork, long, mate, mateIn3",
+            "full_line": "Qxf7 R8e3+ Kg4 Ne5+ Kh5 Rh2#"
+        },
+        {
+            "fen": "3r2k1/6pp/8/5Q2/2pP4/2Pq2P1/5RKP/8 b - - 2 35",
+            "solution": [
+                "Qxc3",
+                "Qf7+",
+                "Kh8",
+                "Qf8+",
+                "Rxf8",
+                "Rxf8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3, sacrifice",
+            "full_line": "Qxc3 Qf7+ Kh8 Qf8+ Rxf8 Rxf8#"
+        },
+        {
+            "fen": "7r/2N2p1p/p2p4/1p6/6b1/8/P3kB1P/2RR3K w - - 2 35",
+            "solution": [
+                "Bd4",
+                "Bf3+",
+                "Kg1",
+                "Rg8+",
+                "Bg7",
+                "Rxg7#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, pillsburysMate",
+            "full_line": "Bd4 Bf3+ Kg1 Rg8+ Bg7 Rxg7#"
+        },
+        {
+            "fen": "6k1/5R2/pp4p1/2p4p/7P/1P1r4/P3r1PK/5R2 b - - 0 38",
+            "solution": [
+                "Rdd2",
+                "Rf8+",
+                "Kh7",
+                "R1f7+",
+                "Kh6",
+                "Rh8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, exposedKing, long, mate, mateIn3, rookEndgame",
+            "full_line": "Rdd2 Rf8+ Kh7 R1f7+ Kh6 Rh8#"
+        },
+        {
+            "fen": "2kr3r/2p2p2/p4q2/1p6/P2PQ3/1PP3p1/6PP/3RR1K1 w - - 0 28",
+            "solution": [
+                "h3",
+                "Qf2+",
+                "Kh1",
+                "Rxh3+",
+                "gxh3",
+                "Qh2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, sacrifice",
+            "full_line": "h3 Qf2+ Kh1 Rxh3+ gxh3 Qh2#"
+        },
+        {
+            "fen": "r6k/pp1b2p1/3p2rp/6q1/2Q2p2/1P3P1P/PBP1R1P1/4R1K1 b - - 1 24",
+            "solution": [
+                "Bxh3",
+                "Re8+",
+                "Rxe8",
+                "Rxe8+",
+                "Kh7",
+                "Qg8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "kingsideAttack, long, mate, mateIn3, middlegame",
+            "full_line": "Bxh3 Re8+ Rxe8 Rxe8+ Kh7 Qg8#"
+        },
+        {
+            "fen": "5rk1/R5p1/5q1p/8/3p4/1P4Q1/P3rPPP/5RK1 w - - 2 38",
+            "solution": [
+                "Qg4",
+                "Qxf2+",
+                "Rxf2",
+                "Re1+",
+                "Rf1",
+                "Rexf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, sacrifice",
+            "full_line": "Qg4 Qxf2+ Rxf2 Re1+ Rf1 Rexf1#"
+        },
+        {
+            "fen": "3k2Q1/q7/3pB1p1/2pP1p2/2P2P2/rp2PK1P/8/8 b - - 2 37",
+            "solution": [
+                "Kc7",
+                "Qc8+",
+                "Kb6",
+                "Qc6+",
+                "Ka5",
+                "Qb5#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3",
+            "full_line": "Kc7 Qc8+ Kb6 Qc6+ Ka5 Qb5#"
+        },
+        {
+            "fen": "8/1b4p1/p3p1Pr/1p1p4/3N4/2PB4/PP3k1r/1K3R2 b - - 20 41",
+            "solution": [
+                "Ke3",
+                "Rf3+",
+                "Kd2",
+                "Nb3+",
+                "Ke1",
+                "Rf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, operaMate",
+            "full_line": "Ke3 Rf3+ Kd2 Nb3+ Ke1 Rf1#"
+        },
+        {
+            "fen": "6k1/1p1R3p/pB4p1/P3bpK1/4r2P/6P1/2P2P2/8 w - - 3 34",
+            "solution": [
+                "Bc5",
+                "Rg4+",
+                "Kh6",
+                "Rxh4+",
+                "gxh4",
+                "Bf4#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "deflection, endgame, long, mate, mateIn3, sacrifice",
+            "full_line": "Bc5 Rg4+ Kh6 Rxh4+ gxh4 Bf4#"
+        },
+        {
+            "fen": "2r3k1/p4ppp/1pb1pq2/1P6/2Q1PP2/6P1/P5BP/2R3K1 b - - 0 24",
+            "solution": [
+                "Bb7",
+                "Qxc8+",
+                "Bxc8",
+                "Rxc8+",
+                "Qd8",
+                "Rxd8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3",
+            "full_line": "Bb7 Qxc8+ Bxc8 Rxc8+ Qd8 Rxd8#"
+        },
+        {
+            "fen": "5k2/5p1p/6p1/1p2q3/2p1p1n1/1P2P3/P1R1QPPP/6K1 w - - 0 26",
+            "solution": [
+                "Qxg4",
+                "Qa1+",
+                "Rc1",
+                "Qxc1+",
+                "Qd1",
+                "Qxd1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3",
+            "full_line": "Qxg4 Qa1+ Rc1 Qxc1+ Qd1 Qxd1#"
+        },
+        {
+            "fen": "2Q5/p4pk1/3p2pp/8/3qP3/5P2/1r4PP/3R3K w - - 2 30",
+            "solution": [
+                "Rxd4",
+                "Rb1+",
+                "Qc1",
+                "Rxc1+",
+                "Rd1",
+                "Rxd1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3, queenRookEndgame",
+            "full_line": "Rxd4 Rb1+ Qc1 Rxc1+ Rd1 Rxd1#"
+        },
+        {
+            "fen": "2kr3r/pp2nppp/4p3/2PpP3/bn1N2Q1/q1N5/2PB1PPP/1K1R1B1R w - - 4 14",
+            "solution": [
+                "Bb5",
+                "Bxc2+",
+                "Nxc2",
+                "Qb3+",
+                "Ka1",
+                "Nxc2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "deflection, fork, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Bb5 Bxc2+ Nxc2 Qb3+ Ka1 Nxc2#"
+        },
+        {
+            "fen": "r2q3k/5Pb1/2n3Bp/3p2pP/pp1P2Q1/6B1/1PP5/6K1 b - - 0 39",
+            "solution": [
+                "Bxd4+",
+                "Qxd4+",
+                "Nxd4",
+                "Be5+",
+                "Qf6",
+                "Bxf6#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "exposedKing, fork, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Bxd4+ Qxd4+ Nxd4 Be5+ Qf6 Bxf6#"
+        },
+        {
+            "fen": "2kr4/2pR4/2P1K1P1/8/8/p3n3/8/8 b - - 1 49",
+            "solution": [
+                "a2",
+                "Rxd8+",
+                "Kxd8",
+                "g7",
+                "a1=Q",
+                "g8=Q#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "advancedPawn, endgame, long, mate, mateIn3, promotion",
+            "full_line": "a2 Rxd8+ Kxd8 g7 a1=Q g8=Q#"
+        },
+        {
+            "fen": "r3r3/2q1b1pk/p3P1Np/5Qp1/8/3p4/PPp2P2/2R1R1K1 b - - 1 30",
+            "solution": [
+                "d2",
+                "Nf8+",
+                "Kg8",
+                "Qh7+",
+                "Kxf8",
+                "Qh8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "discoveredCheck, doubleCheck, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "d2 Nf8+ Kg8 Qh7+ Kxf8 Qh8#"
+        },
+        {
+            "fen": "5rk1/pR1Q1ppp/4N3/3p1n2/8/7P/q1r2PP1/4R1K1 b - - 0 28",
+            "solution": [
+                "Rxf2",
+                "Qxf7+",
+                "Rxf7",
+                "Rb8+",
+                "Rf8",
+                "Rxf8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Rxf2 Qxf7+ Rxf7 Rb8+ Rf8 Rxf8#"
+        },
+        {
+            "fen": "6k1/p2Q4/3p2p1/8/3qPn2/5P2/PPR3PP/6K1 w - - 2 37",
+            "solution": [
+                "Rf2",
+                "Ne2+",
+                "Kh1",
+                "Qd1+",
+                "Rf1",
+                "Qxf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3, pin",
+            "full_line": "Rf2 Ne2+ Kh1 Qd1+ Rf1 Qxf1#"
+        },
+        {
+            "fen": "1R1Q4/5ppk/7p/4Pb2/1P6/2b5/3r3P/1K1R4 w - - 3 36",
+            "solution": [
+                "Kc1",
+                "Rc2+",
+                "Kb1",
+                "Rb2+",
+                "Ka1",
+                "Rxh2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "discoveredAttack, discoveredCheck, doubleCheck, endgame, exposedKing, long, mate, mateIn3, morphysMate",
+            "full_line": "Kc1 Rc2+ Kb1 Rb2+ Ka1 Rxh2#"
+        },
+        {
+            "fen": "r6k/5qp1/2pb3p/1p2P3/3P4/2P3Q1/1P4PP/5R1K w - - 0 29",
+            "solution": [
+                "Rxf7",
+                "Ra1+",
+                "Qe1",
+                "Rxe1+",
+                "Rf1",
+                "Rxf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3",
+            "full_line": "Rxf7 Ra1+ Qe1 Rxe1+ Rf1 Rxf1#"
+        },
+        {
+            "fen": "1k1r4/p1p3pp/Pp3r2/3pR3/Q2N4/8/1PPq1PPP/4R1K1 w - - 3 25",
+            "solution": [
+                "Re8",
+                "Qxf2+",
+                "Kh1",
+                "Qf1+",
+                "Rxf1",
+                "Rxf1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Re8 Qxf2+ Kh1 Qf1+ Rxf1 Rxf1#"
+        },
+        {
+            "fen": "2k4r/ppp1q1p1/3b2p1/3Q4/1P2NPn1/P1P3N1/6P1/R1B2RKr w - - 5 21",
+            "solution": [
+                "Nxh1",
+                "Rxh1+",
+                "Kxh1",
+                "Qh4+",
+                "Kg1",
+                "Qh2#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "attraction, kingsideAttack, long, mate, mateIn3, middlegame, sacrifice",
+            "full_line": "Nxh1 Rxh1+ Kxh1 Qh4+ Kg1 Qh2#"
+        },
+        {
+            "fen": "r4qk1/pppb2p1/1bnp1R2/6N1/8/2NQ2B1/PP4PP/7K b - - 0 19",
+            "solution": [
+                "Qxf6",
+                "Qh7+",
+                "Kf8",
+                "Qh8+",
+                "Ke7",
+                "Nd5#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "kingsideAttack, long, mate, mateIn3, middlegame",
+            "full_line": "Qxf6 Qh7+ Kf8 Qh8+ Ke7 Nd5#"
+        },
+        {
+            "fen": "2r3k1/5ppp/4p3/3n4/2QB4/1r4P1/5PKP/R2q4 b - - 1 32",
+            "solution": [
+                "Rxc4",
+                "Ra8+",
+                "Rb8",
+                "Rxb8+",
+                "Rc8",
+                "Rxc8#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "endgame, long, mate, mateIn3",
+            "full_line": "Rxc4 Ra8+ Rb8 Rxb8+ Rc8 Rxc8#"
+        },
+        {
+            "fen": "4r1k1/4qp2/3p3p/3P1np1/8/2Q5/1P3PPP/R2N2K1 w - - 2 30",
+            "solution": [
+                "Kf1",
+                "Qe2+",
+                "Kg1",
+                "Qe1+",
+                "Qxe1",
+                "Rxe1#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "backRankMate, endgame, long, mate, mateIn3",
+            "full_line": "Kf1 Qe2+ Kg1 Qe1+ Qxe1 Rxe1#"
+        },
+        {
+            "fen": "1r6/6R1/3p4/1P1Rp3/K1r1P3/2k2P2/8/8 w - - 1 45",
+            "solution": [
+                "Ka5",
+                "Ra4+",
+                "Kxa4",
+                "Ra8+",
+                "Ra7",
+                "Rxa7#"
+            ],
+            "hint": "Try to find the forced mate in 3.",
+            "theme": "attraction, endgame, long, mate, mateIn3, rookEndgame, sacrifice",
+            "full_line": "Ka5 Ra4+ Kxa4 Ra8+ Ra7 Rxa7#"
+        }
+    ]
+}
+
+# Track which puzzles have been served to avoid repetition within a session
+_served_puzzles: dict[str, set[str]] = {key: set() for key in BUILTIN_PUZZLES}
+
+
+def reset_served_tracker() -> None:
+    """Reset the served-puzzle tracker (e.g. on new session)."""
+    global _served_puzzles
+    _served_puzzles = {key: set() for key in BUILTIN_PUZZLES}
+
+
+# ---------------------------------------------------------------------------
+# FEN & Move Validation
+# ---------------------------------------------------------------------------
+
+def validate_fen(fen: str) -> bool:
+    """Return True if *fen* is a legal chess position."""
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            return False
+        return True
+    except (ValueError, Exception) as exc:
+        logger.warning("FEN validation failed for '%s': %s", fen, exc)
+        return False
+
+
+def validate_move(fen: str, move_san: str) -> bool:
+    """Return True if *move_san* is a legal move in the position given by *fen*."""
+    try:
+        board = chess.Board(fen)
+        board.parse_san(move_san)
+        return True
+    except (chess.InvalidMoveError, chess.IllegalMoveError, chess.AmbiguousMoveError, ValueError):
+        return False
+
+
+def apply_move(fen: str, move_san: str) -> Optional[str]:
+    """Apply *move_san* to *fen* and return the resulting FEN, or None on failure."""
+    try:
+        board = chess.Board(fen)
+        move = board.parse_san(move_san)
+        board.push(move)
+        return board.fen()
+    except (chess.InvalidMoveError, chess.IllegalMoveError, chess.AmbiguousMoveError, ValueError) as exc:
+        logger.warning("apply_move failed — FEN=%s, SAN=%s: %s", fen, move_san, exc)
+        return None
+
+
+def get_legal_moves(fen: str) -> list[str]:
+    """Return all legal moves in SAN notation for the given FEN."""
+    try:
+        board = chess.Board(fen)
+        return [board.san(m) for m in board.legal_moves]
+    except Exception:
+        return []
+
+
+def is_checkmate(fen: str) -> bool:
+    """Return True if the position is checkmate."""
+    try:
+        return chess.Board(fen).is_checkmate()
+    except Exception:
+        return False
+
+
+def is_check(fen: str) -> bool:
+    """Return True if the side to move is in check."""
+    try:
+        return chess.Board(fen).is_check()
+    except Exception:
+        return False
+
+
+def is_game_over(fen: str) -> bool:
+    """Return True if the game is over (checkmate, stalemate, or draw)."""
+    try:
+        return chess.Board(fen).is_game_over()
+    except Exception:
+        return False
+
+
+def get_turn(fen: str) -> str:
+    """Return 'w' or 'b' indicating whose turn it is."""
+    try:
+        return "w" if chess.Board(fen).turn == chess.WHITE else "b"
+    except Exception:
+        return "w"
+
+
+# ---------------------------------------------------------------------------
+# Solution Validation
+# ---------------------------------------------------------------------------
+
+def validate_solution(fen: str, solution: list[str]) -> bool:
+    """
+    Walk through *solution* moves on *fen* and verify each is legal.
+    For checkmate puzzles, verify the final position is indeed checkmate.
+    """
+    if not solution:
+        return False
+    try:
+        board = chess.Board(fen)
+        for san in solution:
+            move = board.parse_san(san)
+            board.push(move)
+        return True
+    except (chess.InvalidMoveError, chess.IllegalMoveError, chess.AmbiguousMoveError, ValueError) as exc:
+        logger.warning("Solution validation failed — FEN=%s, solution=%s: %s", fen, solution, exc)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Puzzle Selection
+# ---------------------------------------------------------------------------
+
+def get_builtin_puzzle(
+    difficulty: str,
+    exclude_fens: Optional[list[str]] = None,
+) -> Optional[dict]:
+    """
+    Return a random built-in puzzle for *difficulty*, avoiding FENs in
+    *exclude_fens*. Returns None when the pool is exhausted.
+    """
+    puzzles = BUILTIN_PUZZLES.get(difficulty, [])
+    if not puzzles:
+        # Fall back to any available difficulty
+        for key in BUILTIN_PUZZLES:
+            if BUILTIN_PUZZLES[key]:
+                puzzles = BUILTIN_PUZZLES[key]
+                difficulty = key
+                break
+    if not puzzles:
+        return None
+
+    served = _served_puzzles.get(difficulty, set())
+    exclude = set(exclude_fens or [])
+    available = [p for p in puzzles if p["fen"] not in served and p["fen"] not in exclude]
+
+    # Reset tracker if all puzzles have been served
+    if not available:
+        _served_puzzles[difficulty] = set()
+        available = [p for p in puzzles if p["fen"] not in exclude]
+
+    if not available:
+        available = puzzles  # Last resort: allow repeats
+
+    puzzle = random.choice(available)
+    _served_puzzles.setdefault(difficulty, set()).add(puzzle["fen"])
+
+    return {
+        "fen": puzzle["fen"],
+        "solution": puzzle["solution"],
+        "hint": puzzle.get("hint", ""),
+        "theme": puzzle.get("theme", ""),
+        "difficulty": difficulty,
+        "source": "builtin",
+    }
+
+
+def startup_validation() -> dict[str, int]:
+    """
+    Validate every built-in puzzle at startup.  Remove invalid ones and
+    return a summary of how many passed per difficulty.
+    """
+    summary: dict[str, int] = {}
+    for difficulty, puzzles in list(BUILTIN_PUZZLES.items()):
+        valid = []
+        for p in puzzles:
+            if validate_fen(p["fen"]) and validate_solution(p["fen"], p["solution"]):
+                valid.append(p)
+            else:
+                logger.warning(
+                    "Removed invalid built-in puzzle: difficulty=%s fen=%s",
+                    difficulty,
+                    p.get("fen"),
+                )
+        BUILTIN_PUZZLES[difficulty] = valid
+        summary[difficulty] = len(valid)
+    return summary
